@@ -31,7 +31,6 @@ import {
   Wallet,
   CalendarDays,
   LogOut,
-  Plus,
   Trash2,
   Loader2,
   Pencil,
@@ -67,16 +66,30 @@ const categoryEmojiMap: Record<string, string> = {
   급여: "💰",
   용돈: "🧧",
   투자: "📈",
+  "식비 & 간식": "🍽️",
   식비: "🍽️",
   교통: "🚗",
   교육: "📚",
   공과금: "💡",
   쇼핑: "🛍️",
+  "오락 & 장난감": "🎮",
   의료: "🏥",
   기타: "📝",
 }
 const incomeCategories = ["급여", "용돈", "투자", "기타"]
-const expenseCategories = ["식비", "교통", "교육", "공과금", "쇼핑", "의료", "기타"]
+const expenseCategories = ["식비 & 간식", "교통", "교육", "공과금", "쇼핑", "의료", "오락 & 장난감", "기타"]
+
+function normalizeCategory(category: string) {
+  return category === "식비" ? "식비 & 간식" : category
+}
+
+function validateAddForm(form: { date: string; category: string; description: string; amount: string }) {
+  if (!form.date) return "날짜를 선택해주세요."
+  if (!form.category) return "카테고리를 선택해주세요."
+  if (!form.description.trim()) return "내용을 입력해주세요."
+  if (!form.amount.trim()) return "금액을 입력해주세요."
+  return null
+}
 const members = ["아빠", "엄마", "첫째", "둘째", "할머니", "가족"]
 const weeklyDayLabels = ["일", "월", "화", "수", "목", "금", "토"]
 
@@ -102,7 +115,6 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date())
   const [month, setMonth] = useState<Date>(new Date())
-  const [dialogOpen, setDialogOpen] = useState(false)
   const [fixedDialogOpen, setFixedDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
@@ -110,6 +122,7 @@ export default function Home() {
     category: "",
     description: "",
     amount: "",
+    date: format(new Date(), "yyyy-MM-dd"),
   })
   const [fixedForm, setFixedForm] = useState({
     type: "expense" as "income" | "expense",
@@ -193,6 +206,12 @@ export default function Home() {
   useEffect(() => {
     initFamily()
   }, [initFamily])
+
+  useEffect(() => {
+    if (selectedDate) {
+      setForm((prev) => ({ ...prev, date: format(selectedDate, "yyyy-MM-dd") }))
+    }
+  }, [selectedDate])
 
   // Heartbeat for online status
   useEffect(() => {
@@ -279,12 +298,18 @@ export default function Home() {
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedDate || !form.category || !form.description || !form.amount || !family?.id) return
+    if (!family?.id) return
+    const error = validateAddForm(form)
+    if (error) {
+      alert(error)
+      return
+    }
     setSaving(true)
     try {
+      const date = new Date(form.date)
       await addTransaction({
         familyId: family.id,
-        date: selectedDate,
+        date,
         type: form.type,
         category: form.category,
         description: form.description,
@@ -292,8 +317,10 @@ export default function Home() {
         member: family?.memberNames?.[session?.user?.id || ""] || session?.user?.name || "가족",
         memberId: session?.user?.id,
       })
-      setForm({ type: "expense", category: "", description: "", amount: "" })
-      setDialogOpen(false)    } catch (err) {
+      setForm((prev) => ({ ...prev, category: "", description: "", amount: "" }))
+      setSelectedDate(date)
+      setMonth(date)
+    } catch (err) {
       console.error(err)
       alert("저장 중 오류가 발생했습니다.")
     } finally {
@@ -358,7 +385,7 @@ export default function Home() {
     setEditId(tx.id)
     setEditForm({
       type: tx.type,
-      category: tx.category,
+      category: normalizeCategory(tx.category),
       description: tx.description,
       amount: String(tx.amount),
       date: format(tx.date, "yyyy-MM-dd"),
@@ -392,7 +419,7 @@ export default function Home() {
     setFixedEditId(ft.id)
     setFixedEditForm({
       type: ft.type,
-      category: ft.category,
+      category: normalizeCategory(ft.category),
       description: ft.description,
       amount: String(ft.amount),
       periodType: ft.periodType,
@@ -514,34 +541,40 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
       <header className="border-b bg-white dark:bg-zinc-900 dark:border-zinc-800">
-        <div className="mx-auto max-w-6xl px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Wallet className="h-6 w-6 text-emerald-600" />
-            <h1 className="text-xl font-bold tracking-tight">가족 가계부</h1>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-sm text-zinc-500 hidden sm:block">
-              {format(month, "yyyy년 M월", { locale: ko })}
+        <div className="mx-auto max-w-6xl px-3 sm:px-4 py-3 sm:py-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <Wallet className="h-6 w-6 shrink-0 text-emerald-600" />
+                <h1 className="text-lg sm:text-xl font-bold tracking-tight truncate">가족 가계부</h1>
+              </div>
+              <div className="text-sm text-zinc-500 shrink-0 sm:hidden">
+                {format(month, "yyyy년 M월", { locale: ko })}
+              </div>
             </div>
             {session?.user && (
-              <>
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setJoinDialogOpen(true)}
-                  >
-                    초대 코드 입력
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleGenerateInvite}
-                  >
-                    멤버 초대
-                  </Button>
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                <div className="text-sm text-zinc-500 hidden sm:block shrink-0">
+                  {format(month, "yyyy년 M월", { locale: ko })}
                 </div>
-                <div className="flex items-center gap-3">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 sm:flex-none text-xs sm:text-sm"
+                  onClick={() => setJoinDialogOpen(true)}
+                >
+                  <span className="sm:hidden">코드 입력</span>
+                  <span className="hidden sm:inline">초대 코드 입력</span>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 sm:flex-none text-xs sm:text-sm"
+                  onClick={handleGenerateInvite}
+                >
+                  멤버 초대
+                </Button>
+                <div className="flex items-center gap-1 sm:gap-2 ml-auto sm:ml-0">
                   {session.user.image ? (
                     <img
                       src={session.user.image}
@@ -570,19 +603,20 @@ export default function Home() {
                   <Button
                     variant="ghost"
                     size="icon"
+                    className="h-8 w-8 shrink-0"
                     onClick={() => signOut({ callbackUrl: "/login" })}
                     title="로그아웃"
                   >
                     <LogOut className="h-4 w-4" />
                   </Button>
                 </div>
-              </>
+              </div>
             )}
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-6 space-y-6">
+      <main className="mx-auto max-w-6xl px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6">
         {/* Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card>
@@ -591,7 +625,7 @@ export default function Home() {
               <ArrowUpCircle className="h-4 w-4 text-blue-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-blue-600">{formatCurrency(monthlyStats.income)}</div>
+              <div className="text-xl sm:text-2xl font-bold text-blue-600 break-all">{formatCurrency(monthlyStats.income)}</div>
             </CardContent>
           </Card>
           <Card>
@@ -600,7 +634,7 @@ export default function Home() {
               <ArrowDownCircle className="h-4 w-4 text-rose-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-rose-600">{formatCurrency(monthlyStats.expense)}</div>
+              <div className="text-xl sm:text-2xl font-bold text-rose-600 break-all">{formatCurrency(monthlyStats.expense)}</div>
             </CardContent>
           </Card>
           <Card>
@@ -609,7 +643,7 @@ export default function Home() {
               <Wallet className="h-4 w-4 text-emerald-500" />
             </CardHeader>
             <CardContent>
-              <div className={`text-2xl font-bold ${monthlyStats.balance >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+              <div className={`text-xl sm:text-2xl font-bold break-all ${monthlyStats.balance >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                 {formatCurrency(monthlyStats.balance)}
               </div>
             </CardContent>
@@ -667,194 +701,14 @@ export default function Home() {
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
           {/* Calendar */}
           <Card className="lg:col-span-3">
-            <CardHeader className="flex flex-row items-center justify-between">
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <CardTitle className="flex items-center gap-2">
-                <CalendarDays className="h-5 w-5" />
+                <CalendarDays className="h-5 w-5 shrink-0" />
                 캘린더
               </CardTitle>
-              <div className="flex items-center gap-2">
-                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                  <DialogTrigger render={<Button size="sm" className="gap-1"><Plus className="h-4 w-4" />거래 추가</Button>} />
-                  <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>거래 추가</DialogTitle>
-                    </DialogHeader>
-                    <form onSubmit={handleAdd} className="space-y-4 mt-2">
-                      <div className="space-y-2">
-                        <Label>유형</Label>
-                        <Select
-                          value={form.type}
-                          onValueChange={(v) => {
-                            if (v) setForm((prev) => ({ ...prev, type: v as "income" | "expense", category: "" }))
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="선택">
-                              {form.type === "income" ? "수입" : form.type === "expense" ? "지출" : "선택"}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="income">수입</SelectItem>
-                            <SelectItem value="expense">지출</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>날짜</Label>
-                        <Input
-                          type="date"
-                          value={selectedDate ? format(selectedDate, "yyyy-MM-dd") : ""}
-                          onChange={(e) =>
-                            setSelectedDate(e.target.value ? new Date(e.target.value) : undefined)
-                          }
-                          required
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>카테고리</Label>
-                        <Select
-                          value={form.category}
-                          onValueChange={(v) => setForm((prev) => ({ ...prev, category: v || "" }))}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="선택">
-                              {form.category ? `${categoryEmojiMap[form.category]} ${form.category}` : "선택"}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(form.type === "income" ? incomeCategories : expenseCategories).map(
-                              (c) => (
-                                <SelectItem key={c} value={c}>
-                                  {categoryEmojiMap[c]} {c}
-                                </SelectItem>
-                              )
-                            )}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>내용</Label>
-                        <Input
-                          value={form.description}
-                          onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-                          placeholder="예: 마트 장보기"
-                          required
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>금액</Label>
-                        <Input
-                          type="number"
-                          value={form.amount}
-                          onChange={(e) => setForm((prev) => ({ ...prev, amount: e.target.value }))}
-                          placeholder="0"
-                          min={0}
-                          required
-                        />
-                      </div>
-
-                      <Button type="submit" className="w-full" disabled={saving}>
-                        {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        저장
-                      </Button>
-                    </form>
-                  </DialogContent>
-                </Dialog>
-                {/* Edit Transaction Dialog */}
-                <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-                  <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>거래 수정</DialogTitle>
-                    </DialogHeader>
-                    <form onSubmit={handleEditSave} className="space-y-4 mt-2">
-                      <div className="space-y-2">
-                        <Label>유형</Label>
-                        <Select
-                          value={editForm.type}
-                          onValueChange={(v) => {
-                            if (v) setEditForm((prev) => ({ ...prev, type: v as "income" | "expense", category: "" }))
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="선택">
-                              {editForm.type === "income" ? "수입" : editForm.type === "expense" ? "지출" : "선택"}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="income">수입</SelectItem>
-                            <SelectItem value="expense">지출</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>날짜</Label>
-                        <Input
-                          type="date"
-                          value={editForm.date}
-                          onChange={(e) => setEditForm((prev) => ({ ...prev, date: e.target.value }))}
-                          required
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>카테고리</Label>
-                        <Select
-                          value={editForm.category}
-                          onValueChange={(v) => setEditForm((prev) => ({ ...prev, category: v || "" }))}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="선택">
-                              {editForm.category ? `${categoryEmojiMap[editForm.category]} ${editForm.category}` : "선택"}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(editForm.type === "income" ? incomeCategories : expenseCategories).map(
-                              (c) => (
-                                <SelectItem key={c} value={c}>
-                                  {categoryEmojiMap[c]} {c}
-                                </SelectItem>
-                              )
-                            )}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>내용</Label>
-                        <Input
-                          value={editForm.description}
-                          onChange={(e) => setEditForm((prev) => ({ ...prev, description: e.target.value }))}
-                          placeholder="예: 마트 장보기"
-                          required
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>금액</Label>
-                        <Input
-                          type="number"
-                          value={editForm.amount}
-                          onChange={(e) => setEditForm((prev) => ({ ...prev, amount: e.target.value }))}
-                          placeholder="0"
-                          min={0}
-                          required
-                        />
-                      </div>
-
-                      <Button type="submit" className="w-full" disabled={saving}>
-                        {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        수정 저장
-                      </Button>
-                    </form>
-                  </DialogContent>
-                </Dialog>
+              <div className="flex flex-wrap items-center gap-2">
                 <Dialog open={fixedDialogOpen} onOpenChange={setFixedDialogOpen}>
-                  <DialogTrigger render={<Button size="sm" variant="outline" className="gap-1"><CalendarDays className="h-4 w-4" />고정 거래 관리</Button>} />
+                  <DialogTrigger render={<Button size="sm" variant="outline" className="gap-1"><CalendarDays className="h-4 w-4 shrink-0" /><span className="hidden sm:inline">고정 거래 관리</span><span className="sm:hidden">고정 거래</span></Button>} />
                 <DialogContent className="sm:max-w-lg">
                   <DialogHeader>
                     <DialogTitle>고정 거래 관리</DialogTitle>
@@ -868,11 +722,11 @@ export default function Home() {
                       {fixedTransactions.map((ft) => (
                         <div
                           key={ft.id}
-                          className="flex items-center justify-between rounded-md border p-2 text-sm dark:border-zinc-800"
+                          className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between rounded-md border p-2.5 text-sm dark:border-zinc-800"
                         >
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0 flex-1">
                             <span
-                              className={`text-xs font-medium px-1.5 py-0.5 rounded ${
+                              className={`text-xs font-medium px-1.5 py-0.5 rounded shrink-0 ${
                                 ft.type === "income"
                                   ? "bg-blue-50 text-blue-600"
                                   : "bg-rose-50 text-rose-600"
@@ -880,18 +734,18 @@ export default function Home() {
                             >
                               {ft.type === "income" ? "수입" : "지출"}
                             </span>
-                            <span className="text-zinc-500">
-                              {categoryEmojiMap[ft.category] || "📝"} {ft.category}
+                            <span className="text-zinc-500 shrink-0">
+                              {categoryEmojiMap[ft.category] || "📝"} {normalizeCategory(ft.category)}
                             </span>
-                            <span>{ft.description}</span>
-                            <span className="text-zinc-400">
+                            <span className="truncate">{ft.description}</span>
+                            <span className="text-zinc-400 text-xs sm:text-sm w-full sm:w-auto">
                               {ft.periodType === "monthly"
                                 ? `매월 ${ft.periodValue}일`
                                 : `매주 ${formatWeeklyDays(ft.periodValue)}`}
                             </span>
-                            <span className="font-semibold">{formatCurrency(ft.amount)}</span>
+                            <span className="font-semibold shrink-0">{formatCurrency(ft.amount)}</span>
                           </div>
-                          <div className="flex items-center">
+                          <div className="flex items-center shrink-0 self-end sm:self-center">
                             <Button
                               variant="ghost"
                               size="icon"
@@ -917,7 +771,7 @@ export default function Home() {
 
                     {/* Add fixed form */}
                     <form onSubmit={handleFixedAdd} className="space-y-3">
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="space-y-1">
                           <Label className="text-xs">유형</Label>
                           <Select
@@ -958,7 +812,7 @@ export default function Home() {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="space-y-1">
                           {fixedForm.periodType === "monthly" ? (
                             <>
@@ -1027,7 +881,7 @@ export default function Home() {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="space-y-1">
                           <Label className="text-xs">카테고리</Label>
                           <Select
@@ -1073,7 +927,7 @@ export default function Home() {
                     <DialogTitle>고정 거래 수정</DialogTitle>
                   </DialogHeader>
                   <form onSubmit={handleFixedEditSave} className="space-y-4 mt-2">
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="space-y-1">
                         <Label className="text-xs">유형</Label>
                         <Select
@@ -1114,7 +968,7 @@ export default function Home() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="space-y-1">
                         {fixedEditForm.periodType === "monthly" ? (
                           <>
@@ -1221,7 +1075,7 @@ export default function Home() {
               </Dialog>
               </div>
             </CardHeader>
-            <CardContent className="flex justify-center">
+            <CardContent>
               {loading ? (
                 <div className="py-12 text-zinc-400"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></div>
               ) : (
@@ -1232,9 +1086,6 @@ export default function Home() {
                   month={month}
                   onMonthChange={setMonth}
                   locale={ko}
-                  classNames={{
-                    day: "relative flex flex-col items-center justify-center h-12 w-12 p-0 font-normal [&:has(span)]:text-xs",
-                  }}
                   components={{
                     DayButton: ({ day, modifiers, ...props }) => {
                       const key = format(day.date, "yyyy-MM-dd")
@@ -1246,7 +1097,7 @@ export default function Home() {
                         <button
                           {...props}
                           className={cn(
-                            "relative flex h-full w-full flex-col items-center justify-center rounded-md p-0 text-sm transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800",
+                            "relative flex aspect-square h-full w-full min-h-0 flex-col items-center justify-center rounded-md p-0 text-sm transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800",
                             !isSelected && (dow === 0 || holiday) && "text-red-500",
                             !isSelected && dow === 6 && "text-blue-500",
                             isSelected && "bg-emerald-100 text-emerald-900 font-semibold dark:bg-emerald-900 dark:text-emerald-100",
@@ -1279,7 +1130,7 @@ export default function Home() {
           {/* Daily Transactions */}
           <Card className="lg:col-span-2">
             <CardHeader>
-              <CardTitle>
+              <CardTitle className="text-base sm:text-lg">
                 {selectedDate
                   ? format(selectedDate, "M월 d일 (EEEE)", { locale: ko })
                   : "날짜를 선택하세요"}
@@ -1291,99 +1142,293 @@ export default function Home() {
                   <Loader2 className="h-6 w-6 animate-spin mb-2" />
                   <p className="text-sm">불러오는 중...</p>
                 </div>
-              ) : selectedDayTransactions.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-zinc-400">
-                  <CalendarDays className="h-8 w-8 mb-2" />
-                  <p className="text-sm">거래 내역이 없습니다</p>
-                </div>
               ) : (
-                <div className="space-y-3">
-                  {selectedDayTransactions.map((tx) => (
-                    <div
-                      key={tx.id}
-                      className="flex items-center justify-between rounded-lg border p-3 dark:border-zinc-800"
+                <div className="space-y-4">
+                  {selectedDate ? (
+                    <form
+                      onSubmit={handleAdd}
+                      className="rounded-lg border bg-zinc-50/50 p-3 space-y-3 dark:border-zinc-800 dark:bg-zinc-900/50"
                     >
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`flex h-8 w-8 items-center justify-center rounded-full ${
-                            tx.type === "income"
-                              ? "bg-blue-50 text-blue-600 dark:bg-blue-950"
-                              : "bg-rose-50 text-rose-600 dark:bg-rose-950"
-                          }`}
-                        >
-                          {tx.type === "income" ? (
-                            <ArrowUpCircle className="h-4 w-4" />
-                          ) : (
-                            <ArrowDownCircle className="h-4 w-4" />
-                          )}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs text-zinc-500">유형</Label>
+                          <Select
+                            value={form.type}
+                            onValueChange={(v) => {
+                              if (v) setForm((prev) => ({ ...prev, type: v as "income" | "expense", category: "" }))
+                            }}
+                          >
+                            <SelectTrigger className="h-9">
+                              <SelectValue placeholder="선택">
+                                {form.type === "income" ? "수입" : "지출"}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="income">수입</SelectItem>
+                              <SelectItem value="expense">지출</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
-                        <div>
-                          <p className="text-sm font-medium">{tx.description}</p>
-                          <div className="flex items-center gap-1.5">
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                              {categoryEmojiMap[tx.category] || "📝"} {tx.category}
-                            </Badge>
-                            <span className="text-xs text-zinc-400">
-                              {tx.memberId && family?.memberNames?.[tx.memberId]
-                                ? family.memberNames[tx.memberId]
-                                : tx.member}
+                        <div className="space-y-1">
+                          <Label className="text-xs text-zinc-500">날짜</Label>
+                          <Input
+                            type="date"
+                            className="h-9"
+                            value={form.date}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              setForm((prev) => ({ ...prev, date: val }))
+                              if (val) {
+                                const d = new Date(val)
+                                setSelectedDate(d)
+                                setMonth(d)
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-zinc-500">카테고리</Label>
+                        <Select
+                          value={form.category}
+                          onValueChange={(v) => setForm((prev) => ({ ...prev, category: v || "" }))}
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue placeholder="선택">
+                              {form.category ? `${categoryEmojiMap[form.category]} ${form.category}` : "선택"}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(form.type === "income" ? incomeCategories : expenseCategories).map((c) => (
+                              <SelectItem key={c} value={c}>
+                                {categoryEmojiMap[c]} {c}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-zinc-500">내용</Label>
+                        <Input
+                          className="h-9"
+                          value={form.description}
+                          onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+                          placeholder="예: 마트 장보기"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <div className="space-y-1 flex-1">
+                          <Label className="text-xs text-zinc-500">금액</Label>
+                          <Input
+                            type="number"
+                            className="h-9"
+                            value={form.amount}
+                            onChange={(e) => setForm((prev) => ({ ...prev, amount: e.target.value }))}
+                            placeholder="0"
+                            min={0}
+                          />
+                        </div>
+                        <div className="flex items-end">
+                          <Button type="submit" className="h-9" disabled={saving}>
+                            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            등록
+                          </Button>
+                        </div>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-8 text-zinc-400">
+                      <CalendarDays className="h-8 w-8 mb-2" />
+                      <p className="text-sm">날짜를 선택하세요</p>
+                    </div>
+                  )}
+
+                  {selectedDate && selectedDayTransactions.length === 0 && (
+                    <p className="text-sm text-zinc-400 text-center py-2">거래 내역이 없습니다</p>
+                  )}
+
+                  {selectedDayTransactions.length > 0 && (
+                    <div className="space-y-3">
+                      {selectedDayTransactions.map((tx) => (
+                        <div
+                          key={tx.id}
+                          className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-lg border p-3 dark:border-zinc-800"
+                        >
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div
+                              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+                                tx.type === "income"
+                                  ? "bg-blue-50 text-blue-600 dark:bg-blue-950"
+                                  : "bg-rose-50 text-rose-600 dark:bg-rose-950"
+                              }`}
+                            >
+                              {tx.type === "income" ? (
+                                <ArrowUpCircle className="h-4 w-4" />
+                              ) : (
+                                <ArrowDownCircle className="h-4 w-4" />
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium truncate">{tx.description}</p>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">
+                                  {categoryEmojiMap[tx.category] || "📝"} {normalizeCategory(tx.category)}
+                                </Badge>
+                                <span className="text-xs text-zinc-400 truncate">
+                                  {tx.memberId && family?.memberNames?.[tx.memberId]
+                                    ? family.memberNames[tx.memberId]
+                                    : tx.member}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between sm:justify-end gap-2 pl-11 sm:pl-0 w-full sm:w-auto">
+                            <span
+                              className={`text-sm font-semibold shrink-0 ${
+                                tx.type === "income" ? "text-blue-600" : "text-rose-600"
+                              }`}
+                            >
+                              {tx.type === "income" ? "+" : "-"}
+                              {formatCurrency(tx.amount)}
                             </span>
+                            <div className="flex items-center gap-0.5 shrink-0">
+                              {tx.id && !tx.id.startsWith("fixed-") && (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-zinc-400 hover:text-blue-600"
+                                    onClick={() => openEdit(tx)}
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-zinc-400 hover:text-rose-600"
+                                    onClick={() => handleDelete(tx.id!)}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </>
+                              )}
+                              {tx.id?.startsWith("fixed-") && (
+                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-5">고정</Badge>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`text-sm font-semibold ${
-                            tx.type === "income" ? "text-blue-600" : "text-rose-600"
-                          }`}
-                        >
-                          {tx.type === "income" ? "+" : "-"}
-                          {formatCurrency(tx.amount)}
-                        </span>
-                        {tx.id && !tx.id.startsWith("fixed-") && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6 text-zinc-400 hover:text-blue-600"
-                              onClick={() => openEdit(tx)}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6 text-zinc-400 hover:text-rose-600"
-                              onClick={() => handleDelete(tx.id!)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </>
-                        )}
-                        {tx.id?.startsWith("fixed-") && (
-                          <Badge variant="outline" className="text-[10px] px-1 py-0 h-5">고정</Badge>
-                        )}
+                      ))}
+                      <div className="border-t pt-3">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-zinc-500">일계</span>
+                          <span className="font-semibold">
+                            {formatCurrency(
+                              selectedDayTransactions.reduce((sum, tx) =>
+                                tx.type === "income" ? sum + tx.amount : sum - tx.amount, 0
+                              )
+                            )}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  ))}
-                  <div className="border-t pt-3 mt-3">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-zinc-500">일계</span>
-                      <span className="font-semibold">
-                        {formatCurrency(
-                          selectedDayTransactions.reduce((sum, tx) =>
-                            tx.type === "income" ? sum + tx.amount : sum - tx.amount, 0
-                          )
-                        )}
-                      </span>
-                    </div>
-                  </div>
+                  )}
                 </div>
               )}
             </CardContent>
           </Card>
         </div>
       </main>
+
+      {/* Edit Transaction Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>거래 수정</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEditSave} className="space-y-4 mt-2">
+            <div className="space-y-2">
+              <Label>유형</Label>
+              <Select
+                value={editForm.type}
+                onValueChange={(v) => {
+                  if (v) setEditForm((prev) => ({ ...prev, type: v as "income" | "expense", category: "" }))
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="선택">
+                    {editForm.type === "income" ? "수입" : editForm.type === "expense" ? "지출" : "선택"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="income">수입</SelectItem>
+                  <SelectItem value="expense">지출</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>날짜</Label>
+              <Input
+                type="date"
+                value={editForm.date}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, date: e.target.value }))}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>카테고리</Label>
+              <Select
+                value={editForm.category}
+                onValueChange={(v) => setEditForm((prev) => ({ ...prev, category: v || "" }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="선택">
+                    {editForm.category ? `${categoryEmojiMap[editForm.category]} ${editForm.category}` : "선택"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {(editForm.type === "income" ? incomeCategories : expenseCategories).map(
+                    (c) => (
+                      <SelectItem key={c} value={c}>
+                        {categoryEmojiMap[c]} {c}
+                      </SelectItem>
+                    )
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>내용</Label>
+              <Input
+                value={editForm.description}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, description: e.target.value }))}
+                placeholder="예: 마트 장보기"
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>금액</Label>
+              <Input
+                type="number"
+                value={editForm.amount}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, amount: e.target.value }))}
+                placeholder="0"
+                min={0}
+                required
+              />
+            </div>
+
+            <Button type="submit" className="w-full" disabled={saving}>
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              수정 저장
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Invite Code Dialog */}
       <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
