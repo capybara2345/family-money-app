@@ -1,0 +1,81 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function familyDoc(familyId) {
+      return get(/databases/$(database)/documents/families/$(familyId));
+    }
+
+    function isMember(familyId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/families/$(familyId))
+        && request.auth.uid in familyDoc(familyId).data.members;
+    }
+
+    function isOwner(familyId) {
+      return isMember(familyId)
+        && familyDoc(familyId).data.ownerId == request.auth.uid;
+    }
+
+    match /families/{familyId} {
+      // 단건 조회: 초대 코드 가입 전에도 familyId로 읽기 필요
+      allow get: if signedIn();
+      // 목록/쿼리: 본인이 멤버인 가족만
+      allow list: if isMember(familyId);
+
+      allow create: if signedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.auth.uid in request.resource.data.members;
+
+      allow update: if signedIn() && (
+        // 초대 코드로 본인만 가입
+        (
+          !(request.auth.uid in resource.data.members)
+          && request.auth.uid in request.resource.data.members
+        )
+        ||
+        // 멤버: 닉네임·접속 시간
+        (
+          isMember(familyId)
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['memberNames', 'memberLastSeen'])
+        )
+        ||
+        // 방장: 멤버 강퇴 등
+        isOwner(familyId)
+      );
+
+      allow delete: if isOwner(familyId);
+    }
+
+    match /transactions/{txId} {
+      allow read: if isMember(resource.data.familyId);
+
+      allow create: if isMember(request.resource.data.familyId)
+        && request.resource.data.memberId == request.auth.uid;
+
+      allow update, delete: if isMember(resource.data.familyId);
+    }
+
+    match /fixedTransactions/{fixedId} {
+      allow read: if isMember(resource.data.familyId);
+
+      allow create: if isMember(request.resource.data.familyId)
+        && request.resource.data.memberId == request.auth.uid;
+
+      allow update, delete: if isMember(resource.data.familyId);
+    }
+
+    match /invitations/{code} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && isMember(request.resource.data.familyId);
+      allow delete: if signedIn()
+        && isMember(resource.data.familyId);
+    }
+  }
+}

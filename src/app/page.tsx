@@ -35,6 +35,7 @@ import {
   Loader2,
   Pencil,
 } from "lucide-react"
+import { useFirebaseAuth } from "@/components/firebase-auth-provider"
 import {
   addTransaction,
   deleteTransaction,
@@ -110,6 +111,7 @@ function formatCurrency(amount: number) {
 
 export default function Home() {
   const { data: session, status } = useSession()
+  const { ready: firebaseReady, authenticated: firebaseAuthenticated } = useFirebaseAuth()
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [fixedTransactions, setFixedTransactions] = useState<FixedTransaction[]>([])
   const [loading, setLoading] = useState(true)
@@ -161,7 +163,7 @@ export default function Home() {
   const [profileSaving, setProfileSaving] = useState(false)
 
   const initFamily = useCallback(async () => {
-    if (!session?.user?.id) return
+    if (!session?.user?.id || !firebaseAuthenticated) return
     setLoading(true)
     try {
       let fam: Family | null = null
@@ -201,11 +203,13 @@ export default function Home() {
     } finally {
       setLoading(false)
     }
-  }, [session?.user?.id])
+  }, [session?.user?.id, session?.user?.name, firebaseAuthenticated])
 
   useEffect(() => {
-    initFamily()
-  }, [initFamily])
+    if (firebaseReady && firebaseAuthenticated) {
+      initFamily()
+    }
+  }, [initFamily, firebaseReady, firebaseAuthenticated])
 
   useEffect(() => {
     if (selectedDate) {
@@ -215,7 +219,7 @@ export default function Home() {
 
   // Heartbeat for online status
   useEffect(() => {
-    if (!family?.id || !session?.user?.id) return
+    if (!family?.id || !session?.user?.id || !firebaseAuthenticated) return
     const familyId = family.id
     const userId = session.user.id
     updateMemberLastSeen(familyId, userId)
@@ -227,7 +231,7 @@ export default function Home() {
 
   // Real-time subscriptions
   useEffect(() => {
-    if (!family?.id || !session?.user?.id) return
+    if (!family?.id || !session?.user?.id || !firebaseAuthenticated) return
     const familyId = family.id
     const userId = session.user.id
     const unsubFamily = subscribeFamily(familyId, (fam) => {
@@ -257,7 +261,7 @@ export default function Home() {
       unsubTx()
       unsubFixed()
     }
-  }, [family?.id, session?.user?.id])
+  }, [family?.id, session?.user?.id, firebaseAuthenticated])
 
   const mergedTransactions = useMemo(() => {
     const fixedVirtual = generateFixedTransactionsForMonth(
@@ -523,10 +527,21 @@ export default function Home() {
     }
   }
 
-  if (status === "loading") {
+  if (status === "loading" || !firebaseReady) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-950">
         <div className="text-zinc-400">로딩 중...</div>
+      </div>
+    )
+  }
+
+  if (status === "authenticated" && !firebaseAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-950 p-4">
+        <div className="text-center text-zinc-500">
+          <p className="mb-2">데이터베이스 연결에 실패했습니다.</p>
+          <p className="text-sm">잠시 후 다시 시도해주세요.</p>
+        </div>
       </div>
     )
   }
