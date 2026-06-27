@@ -34,6 +34,8 @@ import {
   Trash2,
   Loader2,
   Pencil,
+  Copy,
+  ClipboardPaste,
 } from "lucide-react"
 import { useFirebaseAuth } from "@/components/firebase-auth-provider"
 import {
@@ -91,6 +93,13 @@ function validateAddForm(form: { date: string; category: string; description: st
   if (!form.description.trim()) return "내용을 입력해주세요."
   if (!form.amount.trim()) return "금액을 입력해주세요."
   return null
+}
+
+type CopiedTransaction = {
+  type: "income" | "expense"
+  category: string
+  description: string
+  amount: number
 }
 const members = ["아빠", "엄마", "첫째", "둘째", "할머니", "가족"]
 const weeklyDayLabels = ["일", "월", "화", "수", "목", "금", "토"]
@@ -162,6 +171,7 @@ export default function Home() {
   const [profileDialogOpen, setProfileDialogOpen] = useState(false)
   const [nickname, setNickname] = useState("")
   const [profileSaving, setProfileSaving] = useState(false)
+  const [copiedTx, setCopiedTx] = useState<CopiedTransaction | null>(null)
 
   const initFamily = useCallback(async () => {
     if (!session?.user?.id || !firebaseAuthenticated) return
@@ -339,6 +349,50 @@ export default function Home() {
     } catch (err) {
       console.error(err)
       alert("저장 중 오류가 발생했습니다.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleCopy = (tx: Transaction) => {
+    setCopiedTx({
+      type: tx.type,
+      category: normalizeCategory(tx.category),
+      description: tx.description.replace(/ \(고정\)$/, ""),
+      amount: tx.amount,
+    })
+  }
+
+  const handlePaste = async () => {
+    if (!copiedTx) return
+    if (!selectedDate || !family?.id) {
+      alert("붙여넣을 날짜를 선택해주세요.")
+      return
+    }
+    setSaving(true)
+    try {
+      await addTransaction({
+        familyId: family.id,
+        date: selectedDate,
+        type: copiedTx.type,
+        category: copiedTx.category,
+        description: copiedTx.description,
+        amount: copiedTx.amount,
+        member: family?.memberNames?.[session?.user?.id || ""] || session?.user?.name || "가족",
+        memberId: session?.user?.id,
+      })
+      setForm((prev) => ({
+        ...prev,
+        type: copiedTx.type,
+        category: copiedTx.category,
+        description: "",
+        amount: "",
+        date: format(selectedDate, "yyyy-MM-dd"),
+      }))
+      setMonth(selectedDate)
+    } catch (err) {
+      console.error(err)
+      alert("붙여넣기 중 오류가 발생했습니다.")
     } finally {
       setSaving(false)
     }
@@ -1171,6 +1225,47 @@ export default function Home() {
                 </div>
               ) : (
                 <div className="space-y-4">
+                  {copiedTx && (
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2.5 text-sm dark:border-emerald-900 dark:bg-emerald-950/40">
+                      <div className="min-w-0">
+                        <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium mb-0.5">복사됨</p>
+                        <p className="truncate text-zinc-700 dark:text-zinc-300">
+                          {copiedTx.type === "income" ? "수입" : "지출"} ·{" "}
+                          {categoryEmojiMap[copiedTx.category] || "📝"} {copiedTx.description} ·{" "}
+                          {formatCurrency(copiedTx.amount)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {selectedDate ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="gap-1 h-8"
+                            onClick={handlePaste}
+                            disabled={saving}
+                          >
+                            {saving ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <ClipboardPaste className="h-3.5 w-3.5" />
+                            )}
+                            {format(selectedDate, "M/d", { locale: ko })}에 붙여넣기
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-zinc-500">날짜를 선택하세요</span>
+                        )}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 text-zinc-500"
+                          onClick={() => setCopiedTx(null)}
+                        >
+                          취소
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                   {selectedDate ? (
                     <form
                       onSubmit={handleAdd}
@@ -1319,6 +1414,15 @@ export default function Home() {
                               {formatCurrency(tx.amount)}
                             </span>
                             <div className="flex items-center gap-0.5 shrink-0">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-zinc-400 hover:text-emerald-600"
+                                onClick={() => handleCopy(tx)}
+                                title="복사"
+                              >
+                                <Copy className="h-3.5 w-3.5" />
+                              </Button>
                               {tx.id && !tx.id.startsWith("fixed-") && (
                                 <>
                                   <Button
@@ -1326,6 +1430,7 @@ export default function Home() {
                                     size="icon"
                                     className="h-7 w-7 text-zinc-400 hover:text-blue-600"
                                     onClick={() => openEdit(tx)}
+                                    title="수정"
                                   >
                                     <Pencil className="h-3.5 w-3.5" />
                                   </Button>
@@ -1334,6 +1439,7 @@ export default function Home() {
                                     size="icon"
                                     className="h-7 w-7 text-zinc-400 hover:text-rose-600"
                                     onClick={() => handleDelete(tx.id!)}
+                                    title="삭제"
                                   >
                                     <Trash2 className="h-3.5 w-3.5" />
                                   </Button>
