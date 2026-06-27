@@ -17,7 +17,8 @@ service cloud.firestore {
     }
 
     function isOwner(familyId) {
-      return isMember(familyId)
+      return signedIn()
+        && exists(/databases/$(database)/documents/families/$(familyId))
         && familyDoc(familyId).data.ownerId == request.auth.uid;
     }
 

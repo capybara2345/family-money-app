@@ -78,7 +78,7 @@ function convertMemberLastSeen(
 
 // ─── Family ───
 
-export async function ensureFamilyData(family: Family): Promise<Family> {
+export async function ensureFamilyData(family: Family, userId?: string): Promise<Family> {
   if (!family.id) return family
   const ref = doc(db, "families", family.id)
   const snap = await getDoc(ref)
@@ -100,12 +100,14 @@ export async function ensureFamilyData(family: Family): Promise<Family> {
   }
 
   const memberLastSeen = convertMemberLastSeen(data.memberLastSeen) || family.memberLastSeen
+  const result = { ...family, members, memberNames, memberLastSeen }
 
-  if (changed) {
+  // members 배열 변경은 방장만 가능 (Firestore 보안 규칙)
+  if (changed && userId === family.ownerId) {
     await updateDoc(ref, { members, memberNames })
-    return { ...family, members, memberNames, memberLastSeen }
   }
-  return { ...family, memberLastSeen }
+
+  return result
 }
 
 export async function updateMemberNickname(familyId: string, userId: string, nickname: string) {
@@ -351,66 +353,90 @@ export function generateFixedTransactionsForMonth(
 
 export function subscribeTransactionsByFamily(
   familyId: string,
-  callback: (transactions: Transaction[]) => void
+  callback: (transactions: Transaction[]) => void,
+  onError?: (error: Error) => void
 ) {
   const q = query(txCollection, where("familyId", "==", familyId), orderBy("date", "desc"))
-  return onSnapshot(q, (snapshot) => {
-    const data = snapshot.docs.map((docSnap) => {
-      const d = docSnap.data()
-      return {
-        id: docSnap.id,
-        ...d,
-        date: timestampToDate(d.date as Timestamp),
-        createdAt: d.createdAt ? timestampToDate(d.createdAt as Timestamp) : undefined,
-      } as Transaction
-    })
-    callback(data)
-  })
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const data = snapshot.docs.map((docSnap) => {
+        const d = docSnap.data()
+        return {
+          id: docSnap.id,
+          ...d,
+          date: timestampToDate(d.date as Timestamp),
+          createdAt: d.createdAt ? timestampToDate(d.createdAt as Timestamp) : undefined,
+        } as Transaction
+      })
+      callback(data)
+    },
+    (error) => {
+      console.error("transactions subscription error:", error)
+      onError?.(error)
+    }
+  )
 }
 
 export function subscribeFixedTransactionsByFamily(
   familyId: string,
-  callback: (fixed: FixedTransaction[]) => void
+  callback: (fixed: FixedTransaction[]) => void,
+  onError?: (error: Error) => void
 ) {
   const q = query(fixedCollection, where("familyId", "==", familyId), orderBy("createdAt", "desc"))
-  return onSnapshot(q, (snapshot) => {
-    const data = snapshot.docs.map((docSnap) => {
-      const d = docSnap.data()
-      return {
-        id: docSnap.id,
-        ...d,
-        createdAt: d.createdAt ? timestampToDate(d.createdAt as Timestamp) : undefined,
-      } as FixedTransaction
-    })
-    callback(data)
-  })
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const data = snapshot.docs.map((docSnap) => {
+        const d = docSnap.data()
+        return {
+          id: docSnap.id,
+          ...d,
+          createdAt: d.createdAt ? timestampToDate(d.createdAt as Timestamp) : undefined,
+        } as FixedTransaction
+      })
+      callback(data)
+    },
+    (error) => {
+      console.error("fixedTransactions subscription error:", error)
+      onError?.(error)
+    }
+  )
 }
 
 export function subscribeFamily(
   familyId: string,
-  callback: (family: Family | null) => void
+  callback: (family: Family | null) => void,
+  onError?: (error: Error) => void
 ) {
-  return onSnapshot(doc(db, "families", familyId), (snap) => {
-    if (!snap.exists()) {
-      callback(null)
-      return
+  return onSnapshot(
+    doc(db, "families", familyId),
+    (snap) => {
+      if (!snap.exists()) {
+        callback(null)
+        return
+      }
+      const data = snap.data()
+      const family = {
+        id: snap.id,
+        ...data,
+        createdAt: data.createdAt ? timestampToDate(data.createdAt as Timestamp) : undefined,
+        memberLastSeen: data.memberLastSeen
+          ? Object.fromEntries(
+              Object.entries(data.memberLastSeen).map(([k, v]) => [
+                k,
+                timestampToDate(v as Timestamp),
+              ])
+            )
+          : undefined,
+      } as Family
+      callback(family)
+    },
+    (error) => {
+      console.error("family subscription error:", error)
+      onError?.(error)
     }
-    const data = snap.data()
-    const family = {
-      id: snap.id,
-      ...data,
-      createdAt: data.createdAt ? timestampToDate(data.createdAt as Timestamp) : undefined,
-      memberLastSeen: data.memberLastSeen
-        ? Object.fromEntries(
-            Object.entries(data.memberLastSeen).map(([k, v]) => [
-              k,
-              timestampToDate(v as Timestamp),
-            ])
-          )
-        : undefined,
-    } as Family
-    callback(family)
-  })
+  )
 }
 
 export async function updateMemberLastSeen(familyId: string, userId: string) {

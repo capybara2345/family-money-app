@@ -195,7 +195,13 @@ export default function Home() {
         localStorage.setItem("familyId", fam.id)
       }
       if (fam) {
-        fam = await ensureFamilyData(fam)
+        if (!fam.members.includes(session.user.id)) {
+          console.error("가족 멤버 목록에 현재 사용자가 없습니다:", session.user.id)
+          localStorage.removeItem("familyId")
+          setFamily(null)
+          return
+        }
+        fam = await ensureFamilyData(fam, session.user.id)
       }
       setFamily(fam)
     } catch (e) {
