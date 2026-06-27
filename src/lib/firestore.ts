@@ -63,6 +63,34 @@ export interface Invitation {
 const txCollection = collection(db, "transactions")
 const fixedCollection = collection(db, "fixedTransactions")
 
+function normalizeMemberIds(members: unknown[] | undefined): string[] {
+  if (!members) return []
+  return members.map((id) => String(id))
+}
+
+function isInMembers(members: unknown[] | undefined, userId: string): boolean {
+  return normalizeMemberIds(members).includes(String(userId))
+}
+
+export function isUserInFamily(family: Family, userId: string): boolean {
+  return isInMembers(family.members, userId)
+}
+
+function parseFamily(id: string, data: Record<string, unknown>): Family {
+  const members = normalizeMemberIds(data.members as unknown[] | undefined)
+  const ownerId = String(data.ownerId ?? "")
+  const memberNames = (data.memberNames as Record<string, string>) || {}
+  return {
+    id,
+    name: String(data.name ?? ""),
+    ownerId,
+    members,
+    memberNames,
+    createdAt: data.createdAt ? timestampToDate(data.createdAt as Timestamp) : undefined,
+    memberLastSeen: convertMemberLastSeen(data.memberLastSeen as Record<string, Timestamp> | undefined),
+  }
+}
+
 function timestampToDate(ts: Timestamp): Date {
   return ts.toDate()
 }
@@ -83,28 +111,28 @@ export async function ensureFamilyData(family: Family, userId?: string): Promise
   const ref = doc(db, "families", family.id)
   const snap = await getDoc(ref)
   const data = snap.data() || {}
-  const members = [...(family.members || [])]
+  const ownerId = String(family.ownerId)
+  const members = normalizeMemberIds(family.members)
   const memberNames = { ...(family.memberNames || {}) }
   let changed = false
 
-  if (!members.includes(family.ownerId)) {
-    members.push(family.ownerId)
+  if (!members.includes(ownerId)) {
+    members.push(ownerId)
     changed = true
   }
 
   for (const memberId of members) {
     if (!memberNames[memberId]) {
-      memberNames[memberId] = memberId === family.ownerId ? "방장" : "멤버"
+      memberNames[memberId] = memberId === ownerId ? "방장" : "멤버"
       changed = true
     }
   }
 
   const memberLastSeen = convertMemberLastSeen(data.memberLastSeen) || family.memberLastSeen
-  const result = { ...family, members, memberNames, memberLastSeen }
+  const result: Family = { ...family, ownerId, members, memberNames, memberLastSeen }
 
-  // members 배열 변경은 방장만 가능 (Firestore 보안 규칙)
-  if (changed && userId === family.ownerId) {
-    await updateDoc(ref, { members, memberNames })
+  if (changed && userId && String(userId) === ownerId) {
+    await updateDoc(ref, { members, memberNames, ownerId })
   }
 
   return result
@@ -122,11 +150,12 @@ export async function updateMemberNickname(familyId: string, userId: string, nic
 }
 
 export async function createFamily(name: string, ownerId: string, ownerName?: string): Promise<string> {
+  const uid = String(ownerId)
   const docRef = await addDoc(collection(db, "families"), {
     name,
-    ownerId,
-    members: [ownerId],
-    memberNames: { [ownerId]: ownerName || "방장" },
+    ownerId: uid,
+    members: [uid],
+    memberNames: { [uid]: ownerName || "방장" },
     createdAt: Timestamp.now(),
   })
   return docRef.id
@@ -135,40 +164,30 @@ export async function createFamily(name: string, ownerId: string, ownerName?: st
 export async function getFamily(familyId: string): Promise<Family | null> {
   const snap = await getDoc(doc(db, "families", familyId))
   if (!snap.exists()) return null
-  const data = snap.data()
-  return {
-    id: snap.id,
-    ...data,
-    createdAt: data.createdAt ? timestampToDate(data.createdAt as Timestamp) : undefined,
-    memberLastSeen: convertMemberLastSeen(data.memberLastSeen),
-  } as Family
+  return parseFamily(snap.id, snap.data())
 }
 
 export async function getFamilyByMember(userId: string): Promise<Family | null> {
-  const q = query(collection(db, "families"), where("members", "array-contains", userId))
+  const uid = String(userId)
+  const q = query(collection(db, "families"), where("members", "array-contains", uid))
   const snap = await getDocs(q)
   if (snap.empty) return null
   const docSnap = snap.docs[0]
-  const data = docSnap.data()
-  return {
-    id: docSnap.id,
-    ...data,
-    createdAt: data.createdAt ? timestampToDate(data.createdAt as Timestamp) : undefined,
-    memberLastSeen: convertMemberLastSeen(data.memberLastSeen),
-  } as Family
+  return parseFamily(docSnap.id, docSnap.data())
 }
 
 export async function joinFamily(familyId: string, userId: string, userName?: string) {
+  const uid = String(userId)
   const ref = doc(db, "families", familyId)
   const snap = await getDoc(ref)
   if (!snap.exists()) throw new Error("가족 그룹을 찾을 수 없습니다.")
   const data = snap.data()
-  const members: string[] = data.members || []
+  const members = normalizeMemberIds(data.members as unknown[] | undefined)
   const memberNames: Record<string, string> = data.memberNames || {}
-  if (!members.includes(userId)) {
+  if (!members.includes(uid)) {
     await updateDoc(ref, {
-      members: [...members, userId],
-      memberNames: { ...memberNames, [userId]: userName || "멤버" },
+      members: [...members, uid],
+      memberNames: { ...memberNames, [uid]: userName || "멤버" },
     })
   }
 }
@@ -234,8 +253,10 @@ export async function getInvitation(code: string): Promise<Invitation | null> {
 // ─── Transactions (family-scoped) ───
 
 export async function addTransaction(data: Omit<Transaction, "id" | "createdAt">) {
+  const memberId = data.memberId ? String(data.memberId) : undefined
   return await addDoc(txCollection, {
     ...data,
+    memberId,
     date: Timestamp.fromDate(data.date),
     createdAt: Timestamp.now(),
   })
@@ -268,8 +289,10 @@ export async function updateTransaction(id: string, data: Partial<Omit<Transacti
 // ─── Fixed Transactions (family-scoped) ───
 
 export async function addFixedTransaction(data: Omit<FixedTransaction, "id" | "createdAt">) {
+  const memberId = data.memberId ? String(data.memberId) : undefined
   return await addDoc(fixedCollection, {
     ...data,
+    memberId,
     createdAt: Timestamp.now(),
   })
 }
@@ -416,20 +439,7 @@ export function subscribeFamily(
         callback(null)
         return
       }
-      const data = snap.data()
-      const family = {
-        id: snap.id,
-        ...data,
-        createdAt: data.createdAt ? timestampToDate(data.createdAt as Timestamp) : undefined,
-        memberLastSeen: data.memberLastSeen
-          ? Object.fromEntries(
-              Object.entries(data.memberLastSeen).map(([k, v]) => [
-                k,
-                timestampToDate(v as Timestamp),
-              ])
-            )
-          : undefined,
-      } as Family
+      const family = parseFamily(snap.id, snap.data())
       callback(family)
     },
     (error) => {

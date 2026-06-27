@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
-import { onAuthStateChanged, signInWithCustomToken, signOut } from "firebase/auth"
+import { signInWithCustomToken, signOut } from "firebase/auth"
 import { auth } from "@/lib/firebase"
 
 type FirebaseAuthState = {
@@ -39,6 +39,7 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
     }
 
     let cancelled = false
+    const userId = session.user.id
 
     async function syncFirebaseAuth() {
       try {
@@ -51,7 +52,16 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
         const { token } = await res.json()
         if (!token) throw new Error("Firebase token is empty")
         if (cancelled) return
-        await signInWithCustomToken(auth, token)
+
+        const credential = await signInWithCustomToken(auth, token)
+        if (cancelled) return
+
+        const isMatch = credential.user.uid === userId
+        setAuthenticated(isMatch)
+        if (!isMatch) {
+          setError("Firebase 계정 연동에 실패했습니다.")
+        }
+        setReady(true)
       } catch (err) {
         console.error("Firebase auth sync failed:", err)
         if (cancelled) return
@@ -68,26 +78,19 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
       }
     }
 
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (cancelled) return
-      const isMatch = user?.uid === session.user.id
-      setAuthenticated(isMatch)
-      if (isMatch) setError(null)
-      setReady(true)
-    })
-
-    if (auth.currentUser?.uid !== session.user.id) {
-      setReady(false)
-      syncFirebaseAuth()
-    } else {
+    if (auth.currentUser?.uid === userId) {
       setAuthenticated(true)
       setError(null)
       setReady(true)
+      return
     }
+
+    setReady(false)
+    setAuthenticated(false)
+    syncFirebaseAuth()
 
     return () => {
       cancelled = true
-      unsubscribe()
     }
   }, [session?.user?.id, status])
 

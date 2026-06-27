@@ -6,47 +6,50 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function familyDoc(familyId) {
-      return get(/databases/$(database)/documents/families/$(familyId));
+    function familyData(familyId) {
+      return get(/databases/$(database)/documents/families/$(familyId)).data;
     }
 
+    function familyExists(familyId) {
+      return exists(/databases/$(database)/documents/families/$(familyId));
+    }
+
+    // members 배열에 UID(문자열)가 포함되어 있는지 확인
     function isMember(familyId) {
       return signedIn()
-        && exists(/databases/$(database)/documents/families/$(familyId))
-        && request.auth.uid in familyDoc(familyId).data.members;
+        && familyExists(familyId)
+        && request.auth.uid in familyData(familyId).members;
     }
 
     function isOwner(familyId) {
       return signedIn()
-        && exists(/databases/$(database)/documents/families/$(familyId))
-        && familyDoc(familyId).data.ownerId == request.auth.uid;
+        && familyExists(familyId)
+        && familyData(familyId).ownerId == request.auth.uid;
     }
 
     match /families/{familyId} {
-      // 단건 조회: 초대 코드 가입 전에도 familyId로 읽기 필요
+      // 단건 조회: 초대 가입 전 familyId 확인용
       allow get: if signedIn();
-      // 목록/쿼리: 본인이 멤버인 가족만
-      allow list: if isMember(familyId);
+      // 쿼리(array-contains): resource.data 직접 비교 (get() 없이)
+      allow list: if signedIn()
+        && request.auth.uid in resource.data.members;
 
       allow create: if signedIn()
         && request.resource.data.ownerId == request.auth.uid
         && request.auth.uid in request.resource.data.members;
 
       allow update: if signedIn() && (
-        // 초대 코드로 본인만 가입
         (
           !(request.auth.uid in resource.data.members)
           && request.auth.uid in request.resource.data.members
         )
         ||
-        // 멤버: 닉네임·접속 시간
         (
-          isMember(familyId)
+          request.auth.uid in resource.data.members
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['memberNames', 'memberLastSeen'])
         )
         ||
-        // 방장: 멤버 강퇴 등
         isOwner(familyId)
       );
 
@@ -54,28 +57,42 @@ service cloud.firestore {
     }
 
     match /transactions/{txId} {
-      allow read: if isMember(resource.data.familyId);
+      allow read: if signedIn()
+        && resource.data.familyId is string
+        && isMember(resource.data.familyId);
 
-      allow create: if isMember(request.resource.data.familyId)
+      allow create: if signedIn()
+        && request.resource.data.familyId is string
+        && isMember(request.resource.data.familyId)
         && request.resource.data.memberId == request.auth.uid;
 
-      allow update, delete: if isMember(resource.data.familyId);
+      allow update, delete: if signedIn()
+        && resource.data.familyId is string
+        && isMember(resource.data.familyId);
     }
 
     match /fixedTransactions/{fixedId} {
-      allow read: if isMember(resource.data.familyId);
+      allow read: if signedIn()
+        && resource.data.familyId is string
+        && isMember(resource.data.familyId);
 
-      allow create: if isMember(request.resource.data.familyId)
+      allow create: if signedIn()
+        && request.resource.data.familyId is string
+        && isMember(request.resource.data.familyId)
         && request.resource.data.memberId == request.auth.uid;
 
-      allow update, delete: if isMember(resource.data.familyId);
+      allow update, delete: if signedIn()
+        && resource.data.familyId is string
+        && isMember(resource.data.familyId);
     }
 
     match /invitations/{code} {
       allow read: if signedIn();
       allow create: if signedIn()
+        && request.resource.data.familyId is string
         && isMember(request.resource.data.familyId);
       allow delete: if signedIn()
+        && resource.data.familyId is string
         && isMember(resource.data.familyId);
     }
   }

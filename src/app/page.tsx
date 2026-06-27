@@ -58,6 +58,7 @@ import {
   subscribeFamily,
   updateMemberLastSeen,
   isMemberOnline,
+  isUserInFamily,
   type Transaction,
   type FixedTransaction,
   type Family,
@@ -164,30 +165,35 @@ export default function Home() {
 
   const initFamily = useCallback(async () => {
     if (!session?.user?.id || !firebaseAuthenticated) return
+    const userId = String(session.user.id)
     setLoading(true)
     try {
       let fam: Family | null = null
 
-      // 1) localStorage에 캐시된 가족 ID가 있으면 먼저 직접 조회
       const cachedId = localStorage.getItem("familyId")
       if (cachedId) {
         fam = await getFamily(cachedId)
       }
 
-      // 1-1) 강퇴당한 경우: members에 본인이 없으면 캐시 무효화
-      if (fam && !fam.members.includes(session.user.id)) {
+      if (fam && !isUserInFamily(fam, userId)) {
         localStorage.removeItem("familyId")
-        fam = null
+        if (String(fam.ownerId) === userId) {
+          fam = await ensureFamilyData(fam, userId)
+        } else {
+          fam = null
+        }
       }
 
-      // 2) 캐시 miss거나 가족이 삭제된 경우 members로 검색
-      if (!fam) {
-        fam = await getFamilyByMember(session.user.id)
+      if (!fam || !isUserInFamily(fam, userId)) {
+        fam = await getFamilyByMember(userId)
       }
 
-      // 3) 가족이 없으면 새로 생성
       if (!fam) {
-        const familyId = await createFamily(`${session.user.name || "우리"} 가족`, session.user.id, session.user.name || "방장")
+        const familyId = await createFamily(
+          `${session.user.name || "우리"} 가족`,
+          userId,
+          session.user.name || "방장"
+        )
         fam = await getFamily(familyId)
       }
 
@@ -195,17 +201,17 @@ export default function Home() {
         localStorage.setItem("familyId", fam.id)
       }
       if (fam) {
-        if (!fam.members.includes(session.user.id)) {
-          console.error("가족 멤버 목록에 현재 사용자가 없습니다:", session.user.id)
+        if (!isUserInFamily(fam, userId)) {
+          console.error("가족 멤버 목록에 현재 사용자가 없습니다:", userId, fam.members)
           localStorage.removeItem("familyId")
           setFamily(null)
           return
         }
-        fam = await ensureFamilyData(fam, session.user.id)
+        fam = await ensureFamilyData(fam, userId)
       }
       setFamily(fam)
     } catch (e) {
-      console.error(e)
+      console.error("initFamily failed:", e)
     } finally {
       setLoading(false)
     }
@@ -246,7 +252,7 @@ export default function Home() {
         return
       }
       // 강퇴당한 경우: members에서 빠지면 즉시 탈출
-      if (!fam.members.includes(userId)) {
+      if (!isUserInFamily(fam, userId)) {
         localStorage.removeItem("familyId")
         setFamily(null)
         setTransactions([])
