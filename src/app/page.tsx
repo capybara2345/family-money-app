@@ -111,7 +111,7 @@ function formatCurrency(amount: number) {
 
 export default function Home() {
   const { data: session, status } = useSession()
-  const { ready: firebaseReady, authenticated: firebaseAuthenticated } = useFirebaseAuth()
+  const { ready: firebaseReady, authenticated: firebaseAuthenticated, error: firebaseError } = useFirebaseAuth()
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [fixedTransactions, setFixedTransactions] = useState<FixedTransaction[]>([])
   const [loading, setLoading] = useState(true)
@@ -544,9 +544,9 @@ export default function Home() {
   if (status === "authenticated" && !firebaseAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-950 p-4">
-        <div className="text-center text-zinc-500">
-          <p className="mb-2">데이터베이스 연결에 실패했습니다.</p>
-          <p className="text-sm">잠시 후 다시 시도해주세요.</p>
+        <div className="text-center text-zinc-500 max-w-md">
+          <p className="mb-2 font-medium">데이터베이스 연결에 실패했습니다.</p>
+          <p className="text-sm">{firebaseError || "잠시 후 다시 시도해주세요."}</p>
         </div>
       </div>
     )

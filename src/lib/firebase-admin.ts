@@ -9,6 +9,7 @@ function getAdminApp(): App {
     const serviceAccount = JSON.parse(serviceAccountJson)
     return initializeApp({
       credential: cert(serviceAccount),
+      projectId: serviceAccount.project_id,
     })
   }
 

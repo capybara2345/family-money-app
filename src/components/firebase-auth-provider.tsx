@@ -8,11 +8,13 @@ import { auth } from "@/lib/firebase"
 type FirebaseAuthState = {
   ready: boolean
   authenticated: boolean
+  error: string | null
 }
 
 const FirebaseAuthContext = createContext<FirebaseAuthState>({
   ready: false,
   authenticated: false,
+  error: null,
 })
 
 export function useFirebaseAuth() {
@@ -23,12 +25,14 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
   const { data: session, status } = useSession()
   const [ready, setReady] = useState(false)
   const [authenticated, setAuthenticated] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (status === "loading") return
 
     if (!session?.user?.id) {
       setAuthenticated(false)
+      setError(null)
       signOut(auth).catch(() => {})
       setReady(true)
       return
@@ -38,17 +42,29 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
 
     async function syncFirebaseAuth() {
       try {
+        setError(null)
         const res = await fetch("/api/firebase-token")
-        if (!res.ok) throw new Error("Failed to fetch Firebase token")
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}))
+          throw new Error(body.error || "Failed to fetch Firebase token")
+        }
         const { token } = await res.json()
+        if (!token) throw new Error("Firebase token is empty")
         if (cancelled) return
         await signInWithCustomToken(auth, token)
-      } catch (error) {
-        console.error("Firebase auth sync failed:", error)
-        if (!cancelled) {
-          setAuthenticated(false)
-          setReady(true)
+      } catch (err) {
+        console.error("Firebase auth sync failed:", err)
+        if (cancelled) return
+        const code = (err as { code?: string })?.code
+        if (code === "auth/configuration-not-found") {
+          setError(
+            "Firebase Authentication이 활성화되지 않았습니다. Firebase Console → Authentication → 시작하기를 눌러 활성화해주세요."
+          )
+        } else {
+          setError("Firebase 로그인에 실패했습니다. 잠시 후 다시 시도해주세요.")
         }
+        setAuthenticated(false)
+        setReady(true)
       }
     }
 
@@ -56,6 +72,7 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
       if (cancelled) return
       const isMatch = user?.uid === session.user.id
       setAuthenticated(isMatch)
+      if (isMatch) setError(null)
       setReady(true)
     })
 
@@ -64,6 +81,7 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
       syncFirebaseAuth()
     } else {
       setAuthenticated(true)
+      setError(null)
       setReady(true)
     }
 
@@ -74,7 +92,7 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
   }, [session?.user?.id, status])
 
   return (
-    <FirebaseAuthContext.Provider value={{ ready, authenticated }}>
+    <FirebaseAuthContext.Provider value={{ ready, authenticated, error }}>
       {children}
     </FirebaseAuthContext.Provider>
   )
