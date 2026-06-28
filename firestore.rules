@@ -95,5 +95,38 @@ service cloud.firestore {
         && resource.data.familyId is string
         && isMember(resource.data.familyId);
     }
+
+    match /places/{placeId} {
+      allow read: if signedIn()
+        && resource.data.familyId is string
+        && isMember(resource.data.familyId);
+
+      allow create: if signedIn()
+        && request.resource.data.familyId is string
+        && isMember(request.resource.data.familyId)
+        && request.resource.data.memberId == request.auth.uid
+        && request.resource.data.category in ['best', 'rumored', 'worst']
+        && request.resource.data.placeType in ['restaurant', 'kids', 'event', 'other'];
+
+      allow update, delete: if signedIn()
+        && resource.data.familyId is string
+        && isMember(resource.data.familyId);
+    }
+
+    match /restaurants/{restaurantId} {
+      allow read: if signedIn()
+        && resource.data.familyId is string
+        && isMember(resource.data.familyId);
+
+      allow create: if signedIn()
+        && request.resource.data.familyId is string
+        && isMember(request.resource.data.familyId)
+        && request.resource.data.memberId == request.auth.uid
+        && request.resource.data.category in ['best', 'rumored', 'worst'];
+
+      allow update, delete: if signedIn()
+        && resource.data.familyId is string
+        && isMember(resource.data.familyId);
+    }
   }
 }

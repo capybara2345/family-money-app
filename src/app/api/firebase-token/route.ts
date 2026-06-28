@@ -14,6 +14,7 @@ export async function GET() {
     return NextResponse.json({ token })
   } catch (error) {
     console.error("Failed to create Firebase custom token:", error)
-    return NextResponse.json({ error: "Failed to create token" }, { status: 500 })
+    const message = error instanceof Error ? error.message : "Failed to create token"
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

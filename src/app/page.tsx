@@ -38,6 +38,7 @@ import {
   ClipboardPaste,
 } from "lucide-react"
 import { useFirebaseAuth } from "@/components/firebase-auth-provider"
+import { AppNav } from "@/components/app-nav"
 import {
   addTransaction,
   deleteTransaction,
@@ -635,6 +636,7 @@ export default function Home() {
             </div>
             {session?.user && (
               <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                <AppNav />
                 <div className="text-sm text-zinc-500 hidden sm:block shrink-0">
                   {format(month, "yyyy년 M월", { locale: ko })}
                 </div>
