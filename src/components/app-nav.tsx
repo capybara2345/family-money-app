@@ -2,12 +2,13 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Wallet, Map } from "lucide-react"
+import { Wallet, Map, Dices } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navItems = [
   { href: "/", label: "가계부", icon: Wallet },
   { href: "/places", label: "여행", icon: Map },
+  { href: "/lotto", label: "복권", icon: Dices },
 ]
 
 export function AppNav() {
