@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useEffect, useCallback } from "react"
+import { useState, useMemo, useEffect, useCallback, useRef } from "react"
 import { useSession, signOut } from "next-auth/react"
 import { format, isSameDay } from "date-fns"
 import { ko } from "date-fns/locale"
@@ -96,6 +96,11 @@ function validateAddForm(form: { date: string; category: string; description: st
   return null
 }
 
+/** Keep amount as a text field so Windows Korean IME is not forced to English (`type="number"`). */
+function sanitizeAmountInput(value: string) {
+  return value.replace(/[^\d]/g, "")
+}
+
 type CopiedTransaction = {
   type: "income" | "expense"
   category: string
@@ -130,6 +135,7 @@ export default function Home() {
   const [month, setMonth] = useState<Date>(new Date())
   const [fixedDialogOpen, setFixedDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const descriptionInputRef = useRef<HTMLInputElement>(null)
   const [form, setForm] = useState({
     type: "expense" as "income" | "expense",
     category: "",
@@ -345,8 +351,14 @@ export default function Home() {
         memberId: session?.user?.id,
       })
       setForm((prev) => ({ ...prev, category: "", description: "", amount: "" }))
-      setSelectedDate(date)
-      setMonth(date)
+      // Avoid re-selecting the same day — DayPicker focus churn can steal focus and reset IME.
+      if (!selectedDate || !isSameDay(selectedDate, date)) {
+        setSelectedDate(date)
+      }
+      if (month.getFullYear() !== date.getFullYear() || month.getMonth() !== date.getMonth()) {
+        setMonth(date)
+      }
+      requestAnimationFrame(() => descriptionInputRef.current?.focus())
     } catch (err) {
       console.error(err)
       alert("저장 중 오류가 발생했습니다.")
@@ -954,11 +966,16 @@ export default function Home() {
                         <div className="space-y-1">
                           <Label className="text-xs">금액</Label>
                           <Input
-                            type="number"
+                            type="text"
+                            inputMode="numeric"
                             value={fixedForm.amount}
-                            onChange={(e) => setFixedForm((prev) => ({ ...prev, amount: e.target.value }))}
+                            onChange={(e) =>
+                              setFixedForm((prev) => ({
+                                ...prev,
+                                amount: sanitizeAmountInput(e.target.value),
+                              }))
+                            }
                             placeholder="0"
-                            min={0}
                             required
                           />
                         </div>
@@ -1110,11 +1127,16 @@ export default function Home() {
                       <div className="space-y-1">
                         <Label className="text-xs">금액</Label>
                         <Input
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
                           value={fixedEditForm.amount}
-                          onChange={(e) => setFixedEditForm((prev) => ({ ...prev, amount: e.target.value }))}
+                          onChange={(e) =>
+                            setFixedEditForm((prev) => ({
+                              ...prev,
+                              amount: sanitizeAmountInput(e.target.value),
+                            }))
+                          }
                           placeholder="0"
-                          min={0}
                           required
                         />
                       </div>
@@ -1331,27 +1353,33 @@ export default function Home() {
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs text-zinc-500">내용</Label>
-                        <Input
-                          className="h-9"
-                          value={form.description}
-                          onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-                          placeholder="예: 마트 장보기"
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        <div className="space-y-1 flex-1">
-                          <Label className="text-xs text-zinc-500">금액</Label>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-zinc-500">내용</Label>
                           <Input
-                            type="number"
+                            ref={descriptionInputRef}
                             className="h-9"
-                            value={form.amount}
-                            onChange={(e) => setForm((prev) => ({ ...prev, amount: e.target.value }))}
-                            placeholder="0"
-                            min={0}
+                            value={form.description}
+                            onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+                            placeholder="예: 마트 장보기"
                           />
                         </div>
+                        <div className="flex gap-2">
+                          <div className="space-y-1 flex-1">
+                            <Label className="text-xs text-zinc-500">금액</Label>
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              className="h-9"
+                              value={form.amount}
+                              onChange={(e) =>
+                                setForm((prev) => ({
+                                  ...prev,
+                                  amount: sanitizeAmountInput(e.target.value),
+                                }))
+                              }
+                              placeholder="0"
+                            />
+                          </div>
                         <div className="flex items-end">
                           <Button type="submit" className="h-9" disabled={saving}>
                             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -1548,11 +1576,16 @@ export default function Home() {
             <div className="space-y-2">
               <Label>금액</Label>
               <Input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 value={editForm.amount}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, amount: e.target.value }))}
+                onChange={(e) =>
+                  setEditForm((prev) => ({
+                    ...prev,
+                    amount: sanitizeAmountInput(e.target.value),
+                  }))
+                }
                 placeholder="0"
-                min={0}
                 required
               />
             </div>

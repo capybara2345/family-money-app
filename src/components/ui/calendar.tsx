@@ -199,7 +199,19 @@ function CalendarDayButton({
 
   const ref = React.useRef<HTMLButtonElement>(null)
   React.useEffect(() => {
-    if (modifiers.focused) ref.current?.focus()
+    if (!modifiers.focused) return
+    // Don't steal focus from form fields — on Windows this resets Korean IME to English.
+    const active = document.activeElement
+    if (
+      active instanceof HTMLElement &&
+      (active.tagName === "INPUT" ||
+        active.tagName === "TEXTAREA" ||
+        active.tagName === "SELECT" ||
+        active.isContentEditable)
+    ) {
+      return
+    }
+    ref.current?.focus()
   }, [modifiers.focused])
 
   return (
