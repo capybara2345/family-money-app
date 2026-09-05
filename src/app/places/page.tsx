@@ -366,7 +366,7 @@ function PlacesContent() {
   const [places, setPlaces] = useState<Place[]>([])
   const [listLoading, setListLoading] = useState(true)
   const [activePlaceType, setActivePlaceType] = useState<PlaceType>("restaurant")
-  const [activeCategory, setActiveCategory] = useState<PlaceListCategory>("best")
+  const [activeCategory, setActiveCategory] = useState<PlaceListCategory>("all")
   const [formCategory, setFormCategory] = useState<PlaceCategory>("rumored")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
