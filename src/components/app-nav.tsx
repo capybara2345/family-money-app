@@ -2,14 +2,20 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Wallet, Map, Dices } from "lucide-react"
+import { Wallet, Map, Dices, Wrench } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navItems = [
   { href: "/", label: "가계부", icon: Wallet },
   { href: "/places", label: "여행", icon: Map },
   { href: "/lotto", label: "복권", icon: Dices },
+  { href: "/utils", label: "유틸", icon: Wrench },
 ]
+
+function isActive(pathname: string, href: string) {
+  if (href === "/") return pathname === "/"
+  return pathname === href || pathname.startsWith(`${href}/`)
+}
 
 export function AppNav() {
   const pathname = usePathname()
@@ -17,7 +23,7 @@ export function AppNav() {
   return (
     <nav className="flex gap-1 rounded-lg bg-zinc-100 p-1 dark:bg-zinc-800">
       {navItems.map(({ href, label, icon: Icon }) => {
-        const active = pathname === href
+        const active = isActive(pathname, href)
         return (
           <Link
             key={href}

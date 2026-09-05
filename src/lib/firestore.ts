@@ -213,6 +213,12 @@ export async function removeMemberFromFamily(familyId: string, userId: string) {
   const restaurantsSnap = await getDocs(
     query(collection(db, "restaurants"), where("familyId", "==", familyId))
   )
+  const utilMdSnap = await getDocs(
+    query(collection(db, "utilMarkdowns"), where("familyId", "==", familyId))
+  )
+  const utilChartSnap = await getDocs(
+    query(collection(db, "utilCharts"), where("familyId", "==", familyId))
+  )
 
   const txToDelete = txSnap.docs.filter((d) => {
     const dat = d.data()
@@ -230,12 +236,22 @@ export async function removeMemberFromFamily(familyId: string, userId: string) {
     const dat = d.data()
     return dat.memberId === userId || (!dat.memberId && dat.member === targetName)
   })
+  const utilMdToDelete = utilMdSnap.docs.filter((d) => {
+    const dat = d.data()
+    return dat.memberId === userId || (!dat.memberId && dat.member === targetName)
+  })
+  const utilChartToDelete = utilChartSnap.docs.filter((d) => {
+    const dat = d.data()
+    return dat.memberId === userId || (!dat.memberId && dat.member === targetName)
+  })
 
   await Promise.all([
     ...txToDelete.map((d) => deleteDoc(doc(db, "transactions", d.id))),
     ...fixedToDelete.map((d) => deleteDoc(doc(db, "fixedTransactions", d.id))),
     ...placesToDelete.map((d) => deleteDoc(doc(db, "places", d.id))),
     ...restaurantsToDelete.map((d) => deleteDoc(doc(db, "restaurants", d.id))),
+    ...utilMdToDelete.map((d) => deleteDoc(doc(db, "utilMarkdowns", d.id))),
+    ...utilChartToDelete.map((d) => deleteDoc(doc(db, "utilCharts", d.id))),
     updateDoc(ref, { members: newMembers, memberNames: newMemberNames }),
   ])
 }

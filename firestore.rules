@@ -128,5 +128,39 @@ service cloud.firestore {
         && resource.data.familyId is string
         && isMember(resource.data.familyId);
     }
+
+    match /utilMarkdowns/{docId} {
+      allow read: if signedIn()
+        && resource.data.familyId is string
+        && isMember(resource.data.familyId);
+
+      allow create: if signedIn()
+        && request.resource.data.familyId is string
+        && isMember(request.resource.data.familyId)
+        && request.resource.data.memberId == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.content is string;
+
+      allow update, delete: if signedIn()
+        && resource.data.familyId is string
+        && isMember(resource.data.familyId);
+    }
+
+    match /utilCharts/{docId} {
+      allow read: if signedIn()
+        && resource.data.familyId is string
+        && isMember(resource.data.familyId);
+
+      allow create: if signedIn()
+        && request.resource.data.familyId is string
+        && isMember(request.resource.data.familyId)
+        && request.resource.data.memberId == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.chartKind in ['bar', 'line', 'dashed'];
+
+      allow update, delete: if signedIn()
+        && resource.data.familyId is string
+        && isMember(resource.data.familyId);
+    }
   }
 }
