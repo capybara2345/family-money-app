@@ -350,7 +350,9 @@ export default function Home() {
         member: family?.memberNames?.[session?.user?.id || ""] || session?.user?.name || "가족",
         memberId: session?.user?.id,
       })
-      setForm((prev) => ({ ...prev, category: "", description: "", amount: "" }))
+      // Keep category for the next entry so the user can keep typing Korean
+      // without opening Select (which resets Windows IME to English).
+      setForm((prev) => ({ ...prev, description: "", amount: "" }))
       // Avoid re-selecting the same day — DayPicker focus churn can steal focus and reset IME.
       if (!selectedDate || !isSameDay(selectedDate, date)) {
         setSelectedDate(date)
@@ -358,7 +360,13 @@ export default function Home() {
       if (month.getFullYear() !== date.getFullYear() || month.getMonth() !== date.getMonth()) {
         setMonth(date)
       }
-      requestAnimationFrame(() => descriptionInputRef.current?.focus())
+      // Prefer keeping existing focus (submit uses preventDefault on mousedown).
+      // Only move to description when focus left the field; avoid delayed focus()
+      // which commonly forces English IME on Windows.
+      const desc = descriptionInputRef.current
+      if (desc && document.activeElement !== desc) {
+        desc.focus()
+      }
     } catch (err) {
       console.error(err)
       alert("저장 중 오류가 발생했습니다.")
@@ -967,7 +975,6 @@ export default function Home() {
                           <Label className="text-xs">금액</Label>
                           <Input
                             type="text"
-                            inputMode="numeric"
                             value={fixedForm.amount}
                             onChange={(e) =>
                               setFixedForm((prev) => ({
@@ -1128,7 +1135,6 @@ export default function Home() {
                         <Label className="text-xs">금액</Label>
                         <Input
                           type="text"
-                          inputMode="numeric"
                           value={fixedEditForm.amount}
                           onChange={(e) =>
                             setFixedEditForm((prev) => ({
@@ -1353,38 +1359,73 @@ export default function Home() {
                           </SelectContent>
                         </Select>
                       </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs text-zinc-500">내용</Label>
-                          <Input
-                            ref={descriptionInputRef}
-                            className="h-9"
-                            value={form.description}
-                            onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-                            placeholder="예: 마트 장보기"
-                          />
-                        </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-zinc-500">내용</Label>
+                        <Input
+                          ref={descriptionInputRef}
+                          lang="ko"
+                          className="h-9"
+                          value={form.description}
+                          onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+                          placeholder="예: 마트 장보기"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-zinc-500">금액</Label>
                         <div className="flex gap-2">
-                          <div className="space-y-1 flex-1">
-                            <Label className="text-xs text-zinc-500">금액</Label>
-                            <Input
-                              type="text"
-                              inputMode="numeric"
-                              className="h-9"
-                              value={form.amount}
-                              onChange={(e) =>
-                                setForm((prev) => ({
-                                  ...prev,
-                                  amount: sanitizeAmountInput(e.target.value),
-                                }))
-                              }
-                              placeholder="0"
-                            />
-                          </div>
-                        <div className="flex items-end">
-                          <Button type="submit" className="h-9" disabled={saving}>
+                          <Input
+                            type="text"
+                            className="h-9 flex-1"
+                            value={form.amount}
+                            onChange={(e) =>
+                              setForm((prev) => ({
+                                ...prev,
+                                amount: sanitizeAmountInput(e.target.value),
+                              }))
+                            }
+                            placeholder="0"
+                          />
+                          <Button
+                            type="submit"
+                            className="h-9"
+                            disabled={saving}
+                            // Keep focus on the description field so Hangul IME is not reset.
+                            onMouseDown={(e) => e.preventDefault()}
+                          >
                             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             등록
                           </Button>
+                        </div>
+                        <div className="flex flex-wrap gap-1 pt-0.5">
+                          {["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"].map((digit) => (
+                            <button
+                              key={digit}
+                              type="button"
+                              tabIndex={-1}
+                              className="h-7 min-w-7 rounded-md border border-zinc-200 bg-white px-2 text-xs text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() =>
+                                setForm((prev) => ({
+                                  ...prev,
+                                  amount: sanitizeAmountInput(prev.amount + digit),
+                                }))
+                              }
+                            >
+                              {digit}
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            tabIndex={-1}
+                            className="h-7 min-w-7 rounded-md border border-zinc-200 bg-white px-2 text-xs text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() =>
+                              setForm((prev) => ({ ...prev, amount: prev.amount.slice(0, -1) }))
+                            }
+                            aria-label="금액 한 글자 지우기"
+                          >
+                            ←
+                          </button>
                         </div>
                       </div>
                     </form>
@@ -1577,7 +1618,6 @@ export default function Home() {
               <Label>금액</Label>
               <Input
                 type="text"
-                inputMode="numeric"
                 value={editForm.amount}
                 onChange={(e) =>
                   setEditForm((prev) => ({
