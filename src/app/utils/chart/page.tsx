@@ -14,7 +14,7 @@ import {
 } from "recharts"
 import { format } from "date-fns"
 import { ko } from "date-fns/locale"
-import { Copy, FilePlus, Loader2, Plus, Save, Trash2 } from "lucide-react"
+import { Copy, CopyPlus, FilePlus, Loader2, Plus, Save, Trash2 } from "lucide-react"
 import { UtilsShell } from "@/components/utils-shell"
 import { useFamily } from "@/hooks/use-family"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -42,6 +42,14 @@ type DataRow = { id: string; label: string; value: string }
 
 function createRow(label = "", value = ""): DataRow {
   return { id: crypto.randomUUID(), label, value }
+}
+
+function nextAvailableTitle(base: string, existingTitles: string[]) {
+  const titles = new Set(existingTitles)
+  if (!titles.has(base)) return base
+  let n = 2
+  while (titles.has(`${base} (${n})`)) n += 1
+  return `${base} (${n})`
 }
 
 const defaultRows = () => [
@@ -134,11 +142,14 @@ export default function ChartViewerPage() {
   )
 
   const memberName =
-    family?.memberNames?.[session?.user?.id || ""] || session?.user?.name || "가족"
+    (session?.user?.id && family?.memberNames?.[String(session.user.id)]) ||
+    session?.user?.name ||
+    "가족"
+  const userId = session?.user?.id ? String(session.user.id) : ""
 
   const startNew = () => {
     setActiveId(null)
-    setTitle("새 그래프")
+    setTitle(nextAvailableTitle("새 그래프", docs.map((d) => d.title)))
     setChartKind("bar")
     setXLabel("항목")
     setYLabel("값")
@@ -168,9 +179,35 @@ export default function ChartViewerPage() {
     setRows((prev) => (prev.length <= 1 ? prev : prev.filter((row) => row.id !== id)))
   }
 
+  const buildPayload = (docTitle: string) => ({
+    title: docTitle,
+    chartKind,
+    xLabel,
+    yLabel,
+    rows: rows.map(({ label, value }) => ({ label, value })),
+    member: memberName,
+    memberId: userId,
+  })
+
+  const createChart = async (docTitle: string) => {
+    if (!family?.id || !userId) {
+      throw new Error("로그인이 필요합니다.")
+    }
+    const ref = await addUtilChart({
+      familyId: family.id,
+      ...buildPayload(docTitle),
+    })
+    setActiveId(ref.id)
+    return ref.id
+  }
+
   const handleSave = async () => {
     if (!family?.id) {
       alert("가족 그룹이 필요합니다. 먼저 가족을 생성하거나 참여해주세요.")
+      return
+    }
+    if (!userId) {
+      alert("로그인이 필요합니다.")
       return
     }
     const trimmedTitle = title.trim() || "제목 없음"
@@ -180,27 +217,45 @@ export default function ChartViewerPage() {
     }
     setSaving(true)
     setMessage("")
-    const payload = {
-      title: trimmedTitle,
-      chartKind,
-      xLabel,
-      yLabel,
-      rows: rows.map(({ label, value }) => ({ label, value })),
-      member: memberName,
-      memberId: session?.user?.id,
-    }
     try {
       if (activeId) {
-        await updateUtilChart(activeId, payload)
-        setMessage("저장했습니다.")
+        await updateUtilChart(activeId, buildPayload(trimmedTitle))
+        setMessage("저장했습니다. (기존 그래프 수정)")
       } else {
-        const ref = await addUtilChart({
-          familyId: family.id,
-          ...payload,
-        })
-        setActiveId(ref.id)
-        setMessage("새 그래프로 저장했습니다.")
+        await createChart(trimmedTitle)
+        setMessage("새 그래프로 저장했습니다. 이어서 다른 그래프도 저장할 수 있습니다.")
       }
+    } catch (err) {
+      console.error(err)
+      alert("저장 중 오류가 발생했습니다.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSaveAsNew = async () => {
+    if (!family?.id) {
+      alert("가족 그룹이 필요합니다. 먼저 가족을 생성하거나 참여해주세요.")
+      return
+    }
+    if (!userId) {
+      alert("로그인이 필요합니다.")
+      return
+    }
+    if (chartData.length === 0) {
+      alert("저장할 유효한 데이터가 없습니다.")
+      return
+    }
+    const trimmedTitle = nextAvailableTitle(
+      title.trim() || "제목 없음",
+      docs.map((d) => d.title)
+    )
+    setSaving(true)
+    setMessage("")
+    try {
+      setTitle(trimmedTitle)
+      await createChart(trimmedTitle)
+      setMessage(`「${trimmedTitle}」로 새 그래프를 추가 저장했습니다.`)
     } catch (err) {
       console.error(err)
       alert("저장 중 오류가 발생했습니다.")
@@ -246,8 +301,10 @@ export default function ChartViewerPage() {
     <UtilsShell>
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm text-zinc-500">Firebase에 저장 · 왼쪽 목록에서 불러오기 · 이미지 복사</p>
-          <div className="flex gap-2">
+          <p className="text-sm text-zinc-500">
+            한 사람당 여러 그래프 저장 가능 · 목록에서 불러오기 · 이미지 복사
+          </p>
+          <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" className="gap-1.5" onClick={startNew}>
               <FilePlus className="h-4 w-4" />
               새 그래프
@@ -256,20 +313,31 @@ export default function ChartViewerPage() {
               <Copy className="h-4 w-4" />
               이미지 복사
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-1.5"
+              onClick={handleSaveAsNew}
+              disabled={saving || familyLoading}
+              title="현재 설정을 새 그래프로 추가 저장"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CopyPlus className="h-4 w-4" />}
+              다른 이름으로 저장
+            </Button>
             <Button type="button" className="gap-1.5" onClick={handleSave} disabled={saving || familyLoading}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              저장
+              {activeId ? "수정 저장" : "저장"}
             </Button>
           </div>
         </div>
         {message && <p className="text-sm text-teal-700 dark:text-teal-300">{message}</p>}
 
         <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
-          <Card className="h-fit">
+          <Card className="h-fit max-h-[70vh] overflow-hidden">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">저장 목록</CardTitle>
+              <CardTitle className="text-base">저장 목록 ({docs.length})</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-1">
+            <CardContent className="max-h-[60vh] space-y-1 overflow-y-auto">
               {familyLoading || listLoading ? (
                 <div className="flex justify-center py-8 text-zinc-400">
                   <Loader2 className="h-5 w-5 animate-spin" />

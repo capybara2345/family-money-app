@@ -5,7 +5,7 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { format } from "date-fns"
 import { ko } from "date-fns/locale"
-import { FilePlus, Loader2, Printer, Save, Trash2 } from "lucide-react"
+import { CopyPlus, FilePlus, Loader2, Maximize2, Printer, Save, Trash2 } from "lucide-react"
 import { UtilsShell } from "@/components/utils-shell"
 import { useFamily } from "@/hooks/use-family"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,6 +13,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   addUtilMarkdown,
   deleteUtilMarkdown,
@@ -27,6 +33,17 @@ const emptySample = `# 새 문서
 마크다운을 입력하세요.
 `
 
+const previewClassName =
+  "md-preview prose-sm max-w-none space-y-3 text-zinc-800 dark:text-zinc-100 [&_a]:text-teal-700 [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-zinc-300 [&_blockquote]:pl-3 [&_blockquote]:text-zinc-500 [&_code]:rounded [&_code]:bg-zinc-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[0.85em] dark:[&_code]:bg-zinc-800 [&_h1]:text-2xl [&_h1]:font-bold [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-lg [&_h3]:font-semibold [&_li]:ml-5 [&_li]:list-disc [&_ol>li]:list-decimal [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-zinc-900 [&_pre]:p-3 [&_pre]:text-zinc-100 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-zinc-200 [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-zinc-200 [&_th]:bg-zinc-50 [&_th]:px-2 [&_th]:py-1 dark:[&_td]:border-zinc-700 dark:[&_th]:border-zinc-700 dark:[&_th]:bg-zinc-900"
+
+function nextAvailableTitle(base: string, existingTitles: string[]) {
+  const titles = new Set(existingTitles)
+  if (!titles.has(base)) return base
+  let n = 2
+  while (titles.has(`${base} (${n})`)) n += 1
+  return `${base} (${n})`
+}
+
 export default function MdViewerPage() {
   const { session, family, loading: familyLoading } = useFamily()
   const [docs, setDocs] = useState<UtilMarkdownDoc[]>([])
@@ -36,6 +53,7 @@ export default function MdViewerPage() {
   const [source, setSource] = useState(emptySample)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState("")
+  const [previewOpen, setPreviewOpen] = useState(false)
 
   useEffect(() => {
     if (!family?.id) {
@@ -55,13 +73,12 @@ export default function MdViewerPage() {
   }, [family?.id])
 
   const preview = useMemo(() => source, [source])
-
-  const memberName =
-    family?.memberNames?.[session?.user?.id || ""] || session?.user?.name || "가족"
+  const userId = session?.user?.id ? String(session.user.id) : ""
+  const memberName = (userId && family?.memberNames?.[userId]) || session?.user?.name || "가족"
 
   const startNew = () => {
     setActiveId(null)
-    setTitle("새 문서")
+    setTitle(nextAvailableTitle("새 문서", docs.map((d) => d.title)))
     setSource(emptySample)
     setMessage("")
   }
@@ -73,9 +90,28 @@ export default function MdViewerPage() {
     setMessage("")
   }
 
+  const createDocument = async (docTitle: string) => {
+    if (!family?.id || !userId) {
+      throw new Error("로그인이 필요합니다.")
+    }
+    const ref = await addUtilMarkdown({
+      familyId: family.id,
+      title: docTitle,
+      content: source,
+      member: memberName,
+      memberId: userId,
+    })
+    setActiveId(ref.id)
+    return ref.id
+  }
+
   const handleSave = async () => {
     if (!family?.id) {
       alert("가족 그룹이 필요합니다. 먼저 가족을 생성하거나 참여해주세요.")
+      return
+    }
+    if (!userId) {
+      alert("로그인이 필요합니다.")
       return
     }
     const trimmedTitle = title.trim() || "제목 없음"
@@ -91,20 +127,44 @@ export default function MdViewerPage() {
           title: trimmedTitle,
           content: source,
           member: memberName,
-          memberId: session?.user?.id,
+          memberId: userId,
         })
-        setMessage("저장했습니다.")
+        setMessage("저장했습니다. (기존 문서 수정)")
       } else {
-        const ref = await addUtilMarkdown({
-          familyId: family.id,
-          title: trimmedTitle,
-          content: source,
-          member: memberName,
-          memberId: session?.user?.id,
-        })
-        setActiveId(ref.id)
-        setMessage("새 문서로 저장했습니다.")
+        await createDocument(trimmedTitle)
+        setMessage("새 문서로 저장했습니다. 이어서 다른 문서도 저장할 수 있습니다.")
       }
+    } catch (err) {
+      console.error(err)
+      alert("저장 중 오류가 발생했습니다.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSaveAsNew = async () => {
+    if (!family?.id) {
+      alert("가족 그룹이 필요합니다. 먼저 가족을 생성하거나 참여해주세요.")
+      return
+    }
+    if (!userId) {
+      alert("로그인이 필요합니다.")
+      return
+    }
+    if (!source.trim()) {
+      alert("저장할 내용이 없습니다.")
+      return
+    }
+    const trimmedTitle = nextAvailableTitle(
+      title.trim() || "제목 없음",
+      docs.map((d) => d.title)
+    )
+    setSaving(true)
+    setMessage("")
+    try {
+      setTitle(trimmedTitle)
+      await createDocument(trimmedTitle)
+      setMessage(`「${trimmedTitle}」로 새 문서를 추가 저장했습니다.`)
     } catch (err) {
       console.error(err)
       alert("저장 중 오류가 발생했습니다.")
@@ -125,12 +185,24 @@ export default function MdViewerPage() {
     }
   }
 
+  const previewArticle = (
+    <article className={previewClassName}>
+      {preview.trim() ? (
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{preview}</ReactMarkdown>
+      ) : (
+        <p className="text-zinc-400">미리볼 내용이 없습니다.</p>
+      )}
+    </article>
+  )
+
   return (
     <UtilsShell>
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
-          <p className="text-sm text-zinc-500">Firebase에 저장 · 왼쪽 목록에서 불러오기 · 인쇄</p>
-          <div className="flex gap-2">
+          <p className="text-sm text-zinc-500">
+            한 사람당 여러 문서 저장 가능 · 목록에서 불러오기 · 인쇄
+          </p>
+          <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" className="gap-1.5" onClick={startNew}>
               <FilePlus className="h-4 w-4" />
               새 문서
@@ -139,20 +211,31 @@ export default function MdViewerPage() {
               <Printer className="h-4 w-4" />
               출력
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-1.5"
+              onClick={handleSaveAsNew}
+              disabled={saving || familyLoading}
+              title="현재 내용을 새 문서로 추가 저장"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CopyPlus className="h-4 w-4" />}
+              다른 이름으로 저장
+            </Button>
             <Button type="button" className="gap-1.5" onClick={handleSave} disabled={saving || familyLoading}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              저장
+              {activeId ? "수정 저장" : "저장"}
             </Button>
           </div>
         </div>
         {message && <p className="text-sm text-teal-700 print:hidden dark:text-teal-300">{message}</p>}
 
         <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
-          <Card className="print:hidden h-fit">
+          <Card className="print:hidden h-fit max-h-[70vh] overflow-hidden">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">저장 목록</CardTitle>
+              <CardTitle className="text-base">저장 목록 ({docs.length})</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-1">
+            <CardContent className="max-h-[60vh] space-y-1 overflow-y-auto">
               {familyLoading || listLoading ? (
                 <div className="flex justify-center py-8 text-zinc-400">
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -233,22 +316,40 @@ export default function MdViewerPage() {
 
               <Card className="print:border-0 print:shadow-none">
                 <CardHeader className="pb-2 print:hidden">
-                  <CardTitle className="text-base">미리보기</CardTitle>
+                  <div className="flex items-center justify-between gap-2">
+                    <CardTitle className="text-base">미리보기</CardTitle>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 gap-1"
+                      onClick={() => setPreviewOpen(true)}
+                    >
+                      <Maximize2 className="h-3.5 w-3.5" />
+                      확대
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent>
-                  <article className="md-preview prose-sm max-w-none space-y-3 text-zinc-800 dark:text-zinc-100 [&_a]:text-teal-700 [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-zinc-300 [&_blockquote]:pl-3 [&_blockquote]:text-zinc-500 [&_code]:rounded [&_code]:bg-zinc-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[0.85em] dark:[&_code]:bg-zinc-800 [&_h1]:text-2xl [&_h1]:font-bold [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-lg [&_h3]:font-semibold [&_li]:ml-5 [&_li]:list-disc [&_ol>li]:list-decimal [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-zinc-900 [&_pre]:p-3 [&_pre]:text-zinc-100 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-zinc-200 [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-zinc-200 [&_th]:bg-zinc-50 [&_th]:px-2 [&_th]:py-1 dark:[&_td]:border-zinc-700 dark:[&_th]:border-zinc-700 dark:[&_th]:bg-zinc-900">
-                    {preview.trim() ? (
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{preview}</ReactMarkdown>
-                    ) : (
-                      <p className="text-zinc-400">미리볼 내용이 없습니다.</p>
-                    )}
-                  </article>
+                  <div className="max-h-[420px] overflow-y-auto">{previewArticle}</div>
                 </CardContent>
               </Card>
             </div>
           </div>
         </div>
       </div>
+
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent
+          className="flex max-h-[90vh] w-[min(96vw,56rem)] max-w-none flex-col gap-3 overflow-hidden sm:max-w-none"
+          showCloseButton
+        >
+          <DialogHeader className="pr-8">
+            <DialogTitle>{title.trim() || "미리보기"}</DialogTitle>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1">{previewArticle}</div>
+        </DialogContent>
+      </Dialog>
     </UtilsShell>
   )
 }
