@@ -123,6 +123,10 @@
   }
   html {
     @apply font-sans overflow-x-hidden;
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
   }
   body {
     @apply bg-background text-foreground overflow-x-hidden;

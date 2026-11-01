@@ -219,6 +219,15 @@ export async function removeMemberFromFamily(familyId: string, userId: string) {
   const utilChartSnap = await getDocs(
     query(collection(db, "utilCharts"), where("familyId", "==", familyId))
   )
+  const liverPlanSnap = await getDocs(
+    query(collection(db, "liverPlans"), where("familyId", "==", familyId))
+  )
+  const liverLogSnap = await getDocs(
+    query(collection(db, "liverLogs"), where("familyId", "==", familyId))
+  )
+  const liverBodySnap = await getDocs(
+    query(collection(db, "liverBodyLogs"), where("familyId", "==", familyId))
+  )
 
   const txToDelete = txSnap.docs.filter((d) => {
     const dat = d.data()
@@ -244,6 +253,9 @@ export async function removeMemberFromFamily(familyId: string, userId: string) {
     const dat = d.data()
     return dat.memberId === userId || (!dat.memberId && dat.member === targetName)
   })
+  const liverPlanToDelete = liverPlanSnap.docs.filter((d) => d.data().memberId === userId)
+  const liverLogToDelete = liverLogSnap.docs.filter((d) => d.data().memberId === userId)
+  const liverBodyToDelete = liverBodySnap.docs.filter((d) => d.data().memberId === userId)
 
   await Promise.all([
     ...txToDelete.map((d) => deleteDoc(doc(db, "transactions", d.id))),
@@ -252,6 +264,9 @@ export async function removeMemberFromFamily(familyId: string, userId: string) {
     ...restaurantsToDelete.map((d) => deleteDoc(doc(db, "restaurants", d.id))),
     ...utilMdToDelete.map((d) => deleteDoc(doc(db, "utilMarkdowns", d.id))),
     ...utilChartToDelete.map((d) => deleteDoc(doc(db, "utilCharts", d.id))),
+    ...liverPlanToDelete.map((d) => deleteDoc(doc(db, "liverPlans", d.id))),
+    ...liverLogToDelete.map((d) => deleteDoc(doc(db, "liverLogs", d.id))),
+    ...liverBodyToDelete.map((d) => deleteDoc(doc(db, "liverBodyLogs", d.id))),
     updateDoc(ref, { members: newMembers, memberNames: newMemberNames }),
   ])
 }

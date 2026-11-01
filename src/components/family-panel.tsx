@@ -124,7 +124,7 @@ export function FamilyPanelProvider({ children }: { children: React.ReactNode })
           </DialogHeader>
           <div className="space-y-4 mt-2">
             <p className="text-sm text-zinc-500">
-              아래 코드를 초대하고 싶은 멤버에게 공유하세요. 가계부와 여행 리스트가 함께 공유됩니다.
+              아래 코드를 초대하고 싶은 멤버에게 공유하세요. 가계부, 여행, 지방간 기록이 함께 공유됩니다.
             </p>
             <div className="flex items-center gap-2">
               <div className="flex-1 rounded-md border bg-zinc-50 px-3 py-2 text-center text-lg font-mono font-semibold tracking-widest dark:bg-zinc-900">
@@ -255,7 +255,7 @@ export function FamilyMembersCard() {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium text-zinc-500">
-          가족 멤버 ({family.members.length}명) · 가계부·여행 함께 보기
+          가족 멤버 ({family.members.length}명) · 가계부·여행·지방간 함께 보기
         </CardTitle>
       </CardHeader>
       <CardContent>

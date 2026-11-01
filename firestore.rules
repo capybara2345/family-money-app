@@ -162,5 +162,86 @@ service cloud.firestore {
         && resource.data.familyId is string
         && isMember(resource.data.familyId);
     }
+
+    // 지방간 탈출: 가족은 읽고, 본인 기록만 수정한다. 강퇴 시 삭제는 가족 멤버가 할 수 있다.
+    match /liverPlans/{planId} {
+      allow read: if signedIn()
+        && resource.data.familyId is string
+        && isMember(resource.data.familyId);
+
+      allow create, update: if signedIn()
+        && request.resource.data.familyId is string
+        && isMember(request.resource.data.familyId)
+        && request.resource.data.memberId == request.auth.uid
+        && planId == request.resource.data.familyId + '_' + request.auth.uid
+        && request.resource.data.calorieGoal is number
+        && request.resource.data.calorieGoal > 0
+        && request.resource.data.calorieGoal <= 8000
+        && request.resource.data.habits is list
+        && request.resource.data.habits.size() <= 30
+        && (
+          !('heightCm' in request.resource.data)
+          || (
+            request.resource.data.heightCm is number
+            && request.resource.data.heightCm >= 100
+            && request.resource.data.heightCm <= 250
+          )
+        );
+
+      allow delete: if signedIn()
+        && resource.data.familyId is string
+        && isMember(resource.data.familyId);
+    }
+
+    match /liverLogs/{logId} {
+      allow read: if signedIn()
+        && resource.data.familyId is string
+        && isMember(resource.data.familyId);
+
+      allow create, update: if signedIn()
+        && request.resource.data.familyId is string
+        && isMember(request.resource.data.familyId)
+        && request.resource.data.memberId == request.auth.uid
+        && request.resource.data.date is string
+        && request.resource.data.date.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && logId == request.resource.data.familyId + '_' + request.auth.uid + '_' + request.resource.data.date
+        && request.resource.data.checks is map
+        && request.resource.data.checks.size() <= 40
+        && request.resource.data.meals is list
+        && request.resource.data.meals.size() <= 50;
+
+      allow delete: if signedIn()
+        && resource.data.familyId is string
+        && isMember(resource.data.familyId);
+    }
+
+    match /liverBodyLogs/{logId} {
+      allow read: if signedIn()
+        && resource.data.familyId is string
+        && isMember(resource.data.familyId);
+
+      allow create, update: if signedIn()
+        && request.resource.data.familyId is string
+        && isMember(request.resource.data.familyId)
+        && request.resource.data.memberId == request.auth.uid
+        && request.resource.data.date is string
+        && request.resource.data.date.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && logId == request.resource.data.familyId + '_' + request.auth.uid + '_' + request.resource.data.date
+        && request.resource.data.weightKg is number
+        && request.resource.data.weightKg > 0
+        && request.resource.data.weightKg <= 400
+        && (
+          !('waistCm' in request.resource.data)
+          || (
+            request.resource.data.waistCm is number
+            && request.resource.data.waistCm >= 40
+            && request.resource.data.waistCm <= 200
+          )
+        );
+
+      allow delete: if signedIn()
+        && resource.data.familyId is string
+        && isMember(resource.data.familyId);
+    }
   }
 }
